@@ -1,7 +1,7 @@
 Role Name
 =========
 
-A brief description of the role goes here.
+Ansible Role to Automate Deployment IdM by FreeIPA.
 
 Requirements
 ------------
