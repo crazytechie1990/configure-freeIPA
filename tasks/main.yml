@@ -1,0 +1,114 @@
+---
+# Credit to https://www.golinuxcloud.com/install-configure-freeipa-server-in-rhel-8/ .
+# Tasks file for configure_FreeIPA_Server.
+- name: Open important ports before configuring FreeIPA server in RHEL8.
+  ansible.posix.firewalld:
+    service: "{{ item }}"
+    permanent: yes
+    immediate: yes
+    state: enabled
+  loop:
+    - freeipa-ldap
+    - freeipa-ldaps
+    - dns
+  notify: restart_firewalld
+  tags:
+    - add_firewalld_services
+
+ # Enable IDM module stream required to configure FreeIPA Server in RHEL8 and do a distro-sync. 
+- name: Enable module stream  
+  shell: |
+    yum module enable idm:DL1 -y
+    yum distro-sync
+  tags: 
+    - enable_idm_server_stream
+
+# Check if a new kernel was installed in the distro-sync.
+- name: Verify the kernel
+  command: grubby --default-index
+  register: grubby_output
+  tags: 
+    - check_index
+
+# If new kernel was installed in the above step then reboot to activate the new kernel.
+- name: Reboot if required
+  reboot:
+    msg: Ansible has rebooted the machine as part of the configuration.
+    reboot_timeout: 180
+    test_command: "{{ ansible_hostname }}"
+  when: grubby_output.stdout != "0"
+  tags:
+    - reboot_server
+
+# Download the packages to install and configure FreeIPA Server.
+- name: FreeIPA packages download/install
+  shell: |
+    yum module install idm:DL1/server -y
+  tags:
+    - package_install
+
+# Configure the FreeIPA server by executing ipa-server-install script
+- name: Execute ipa-server-install script
+# Two ways this installation could be done. One is running a bash script with expect.
+  shell: |
+    #!/bin/bash
+    set timeout -1
+    /usr/bin/expect <<EOD
+    spawn ipa-server-install --allow-zone-overlap
+    expect "Do you want to configure integrated DNS \(BIND\)\? \[no]:"
+    send "\r"
+    expect "Server host name \[master.crazytechie.lab]:"
+    send "\r"
+    expect "Please confirm the domain name \[crazytechie.lab]:"
+    send "\r"
+    expect "Please provide a realm name \[CRAZYTECHIE.LAB]:"
+    send "\r"
+    expect "Directory Manager password:"
+    send "P@ssw0rd"
+    expect "Password \(confirm\):"
+    send "P@ssw0rd"
+    expect "IPA admin password:"
+    send "P@ssw0rd"
+    expect "Do you want to configure chrony with NTP server or pool address\? \[no]:"
+    send "no\r"
+    expect "Continue to configure the system with these values\? \[no]:"
+    send "Yes\r"
+    interact
+    EOD
+  # The other way is using expect module.
+  # expect:
+  #   command: ipa-server-install --allow-zone-overlap
+  #   responses:
+  #     Do you want to configure integrated DNS \(BIND\)\?\s\[no]: "\r"
+  #     Server host name \[master.crazytechie.lab]: "\r"
+  #     Please confirm the domain name \[crazytechie.lab]: "\r"
+  #     Please provide a realm name \[CRAZYTECHIE.LAB]: "\r"
+  #     Directory Manager password: "P@ssw0rd"
+  #     Password \(confirm\): "P@ssw0rd"
+  #     IPA admin password: "P@ssw0rd"
+  #     Do you want to configure chrony with NTP server or pool address\? \[no]: "no"
+  #     Continue to configure the system with these values\? \[no]: "Yes"
+
+
+# Authenticate to kerberos realm.
+- name: Case insensitive password string match
+  expect:
+    command: kinit admin
+    responses:
+      Password for admin@EXAMPLE.COM: "P@ssw0rd"
+  # you don't want to show passwords in your logs
+  no_log: true
+  tags:
+    - kerberos_authenticate
+
+# Use the klist command to verify the identity and the ticket granting ticket (TGT) from the server:
+- name: Rune klist command
+  shell: klist
+  register: klist_output
+  tags:
+    - klist_out
+
+- name: Debug klist
+  debug: 
+    var: klist_output
+  

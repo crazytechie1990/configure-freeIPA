@@ -1,0 +1,6 @@
+---
+# handlers file for configure_FreeIPA_Server
+- name: restart_firewalld 
+  systemd:
+    name: firewalld
+    state: reloaded
