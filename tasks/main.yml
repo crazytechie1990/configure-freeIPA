@@ -102,7 +102,7 @@
     - kerberos_authenticate
 
 # Use the klist command to verify the identity and the ticket granting ticket (TGT) from the server:
-- name: Rune klist command
+- name: Run klist command
   shell: klist
   register: klist_output
   tags:
